@@ -1,0 +1,24 @@
+// CNN Architecture
+digraph {
+	fontname=Arial fontsize=14 rankdir=LR
+	node [fillcolor=white fontname=Arial fontsize=13 shape=box style=filled]
+	edge [fontname=Arial fontsize=11]
+	nodesep=0.4 ranksep=0.6
+	node [labelloc=c]
+	Input [label=<<b>Input</b><br/><br/>64x64x1> fillcolor=lightblue]
+	Block1 [label=<<b>Conv Block 1</b><br/><br/>1→32<br/><br/>BN, ReLU, Pool<br/><br/>32x32x32> fillcolor=white]
+	Block2 [label=<<b>Conv Block 2</b><br/><br/>32→64<br/><br/>BN, ReLU, Pool<br/><br/>16x16x64> fillcolor=white]
+	Block3 [label=<<b>Conv Block 3</b><br/><br/>64→128<br/><br/>BN, ReLU, Pool<br/><br/>8x8x128> fillcolor=white]
+	Flatten [label=<<b>Flatten</b><br/><br/>8x8x128 → 8192> fillcolor=white]
+	FC [label=<<b>FC Layers</b><br/><br/>8192→256<br/><br/>ReLU, Dropout<br/><br/>256→64<br/><br/>Embedding (64)> fillcolor=white]
+	Input2 [label=<<b>Input 2</b><br/><br/>64x64x1> fillcolor=lightblue]
+	Cosine [label=<<b>Cosine Similarity</b><br/><br/>(Genuine/Forged)> fillcolor=lightgreen]
+	Input -> Block1
+	Block1 -> Block2
+	Block2 -> Block3
+	Block3 -> Flatten
+	Flatten -> FC
+	Input2 -> FC
+	FC -> Cosine
+	Input2 -> FC [label="Shared Weights" style=dashed]
+}

@@ -1,0 +1,40 @@
+// CNN Architecture
+digraph {
+	fontname=Arial fontsize=14 rankdir=TB size="5,7"
+	node [fillcolor=white fontname=Arial fontsize=11 shape=box style=filled]
+	edge [fontname=Arial fontsize=12]
+	nodesep=0.3 ranksep=0.5
+	Input [label="Input
+64x64x1" fillcolor=lightblue]
+	Block1 [label="Conv Block 1
+3x3, 1→32
+BN → ReLU → Pool(2x2)
+32x32x32"]
+	Block2 [label="Conv Block 2
+3x3, 32→64
+BN → ReLU → Pool(2x2)
+16x16x64"]
+	Block3 [label="Conv Block 3
+3x3, 64→128
+BN → ReLU → Pool(2x2)
+8x8x128"]
+	Flatten [label="Flatten
+8x8x128 → 8192"]
+	FC [label="FC Layers
+8192→256 → ReLU → Dropout
+256→64
+Embedding (64)"]
+	Input2 [label="Input 2
+64x64x1" fillcolor=lightblue]
+	Cosine [label="Cosine Similarity
+(Genuine/Forged)" fillcolor=lightgreen]
+	Input -> Block1
+	Block1 -> Block2
+	Block2 -> Block3
+	Block3 -> Flatten
+	Flatten -> FC
+	Input2 -> FC
+	FC -> Cosine
+	Input2 -> FC [label="Shared
+Weights" style=dashed]
+}

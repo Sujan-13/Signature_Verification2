@@ -1,0 +1,45 @@
+// CNN Architecture
+digraph {
+	rankdir=LR size="10,10"
+	Input [label="Input
+64x64x1" fillcolor=lightblue shape=box style=filled]
+	ConvBlock1 [label="Conv Block 1
+Conv2d 1→32
+3x3, pad=1
+BatchNorm → ReLU → MaxPool(2x2)
+→ 32x32x32" fillcolor=lightyellow shape=box style=filled]
+	ConvBlock2 [label="Conv Block 2
+Conv2d 32→64
+3x3, pad=1
+BatchNorm → ReLU → MaxPool(2x2)
+→ 16x16x64" fillcolor=lightyellow shape=box style=filled]
+	ConvBlock3 [label="Conv Block 3
+Conv2d 64→128
+3x3, pad=1
+BatchNorm → ReLU → MaxPool(2x2)
+→ 8x8x128" fillcolor=lightyellow shape=box style=filled]
+	Flatten [label="Flatten
+→ 8192" fillcolor=lightgreen shape=box style=filled]
+	FC1 [label="Linear 8192→256
+ReLU + Dropout(0.5)" fillcolor=lightgreen shape=box style=filled]
+	FC2 [label="Linear 256→64
+→ Embedding (e1)" fillcolor=lightgreen shape=box style=filled]
+	Input2 [label="Input Image 2
+64x64x1" fillcolor=lightblue shape=box style=filled]
+	Embedding2 [label="Embedding (e2)
+64-D" fillcolor=lightgreen shape=box style=filled]
+	Cosine [label="Cosine Similarity
+(e1·e2)/(||e1||·||e2||)" fillcolor=lightcoral shape=ellipse style=filled]
+	Output [label="Similarity Score
+Genuine / Forged" fillcolor=lightgrey shape=box style=filled]
+	Input -> ConvBlock1
+	ConvBlock1 -> ConvBlock2
+	ConvBlock2 -> ConvBlock3
+	ConvBlock3 -> Flatten
+	Flatten -> FC1
+	FC1 -> FC2
+	Input2 -> Embedding2 [label="Shared Network" style=dashed]
+	FC2 -> Cosine [label=e1]
+	Embedding2 -> Cosine [label=e2]
+	Cosine -> Output
+}
