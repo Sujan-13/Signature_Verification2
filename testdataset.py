@@ -4,8 +4,8 @@ import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 
-reference_extract_path='./content/Reference(646)'
-ques_extract_path = './content/Questioned(1287)'
+reference_extract_path='./content/PNG/Reference(646)'
+ques_extract_path = './content/PNG/Questioned(1287)'
 class SignatureVerificationTestDataset(Dataset):
     def __init__(self, reference_dir, ques_dir, transform=None):
         """
@@ -65,10 +65,12 @@ class SignatureVerificationTestDataset(Dataset):
                     except (ValueError, IndexError):
                         print(f"Skipping invalid genuine filename: {filename}")
                         continue
-
+    
+        min_ref_imgs = min(len(reference_by_author.get(author_id)) for author_id in reference_by_author)
+        print(min_ref_imgs)
         # Create pairs for each author
         for author_id in reference_by_author:
-            reference_sigs = reference_by_author.get(author_id, [])
+            reference_sigs = reference_by_author.get(author_id, [])[:min_ref_imgs]
             ques_genuine_sigs= ques_genuine_by_author.get(author_id,[])
             ques_forged_sigs = ques_forgery_by_author.get(author_id, [])
             if not (reference_sigs or ques_forgery_by_author or ques_genuine_by_author):
@@ -77,37 +79,48 @@ class SignatureVerificationTestDataset(Dataset):
             # Reference-Genuine pairs (label = 1)
             for i in range(len(reference_sigs)):
                 for j in range(len(ques_genuine_sigs)):  # Pair different genuine samples
-                    self.pairs.append((reference_sigs[i], ques_genuine_sigs[j]))
+                    self.pairs.append((reference_sigs, ques_genuine_sigs[j]))
                     self.labels.append(1)
 
             # Reference-Forgery pairs (label = 0)
             for i in range(len(reference_sigs)):
                 for j in range(len(ques_forged_sigs)):  # Pair different genuine samples
-                    self.pairs.append((reference_sigs[i], ques_forged_sigs[j]))
+                    self.pairs.append((reference_sigs, ques_forged_sigs[j]))
                     self.labels.append(0)
 
         print(f"Training Total pairs: {len(self.pairs)}, Total labels: {len(self.labels)}")
         print(f"Training Positive pairs (label=1): {sum(1 for label in self.labels if label == 1)}")
         print(f"Training Negative pairs (label=0): {sum(1 for label in self.labels if label == 0)}")
 
+        print(f"Genuine authors: {len(ques_genuine_by_author)}, {ques_genuine_by_author.keys()}")
+        print(f"Forgery authors: {len(ques_forgery_by_author)}, {ques_forgery_by_author.keys()}")
+        for author_id, sigs in ques_genuine_by_author.items():
+            print(f"Author {author_id}: {len(sigs)} genuine signatures")
+        for author_id, sigs in ques_forgery_by_author.items():
+            print(f"Author {author_id}: {len(sigs)} forged signatures")
+        for author_id, sigs in reference_by_author.items():
+            print(f"Author {author_id}: {len(sigs)} Reference signatures")
+
     def __len__(self):
         return len(self.pairs)
 
     def __getitem__(self, idx):
         # Get pair of image paths and label
-        img1_path, img2_path = self.pairs[idx]
+        imgr_path, img2_path = self.pairs[idx]
         label = self.labels[idx]
-
+        img1 = []
         # Load images
-        img1 = Image.open(img1_path).convert('L')  # Grayscale, like FashionMNIST
+        for img1_path in imgr_path:
+            img = Image.open(img1_path).convert('L')  # Grayscale, like FashionMNIST
+            img = self.transform(img)
+            img1.append(img)
+        
         img2 = Image.open(img2_path).convert('L')
+        label = torch.tensor(label, dtype=torch.float32)
 
         # Apply transforms
         if self.transform:
-            img1 = self.transform(img1)
             img2 = self.transform(img2)
-
-        label = torch.tensor(label, dtype=torch.float32)
 
         return img1, img2, label
 
