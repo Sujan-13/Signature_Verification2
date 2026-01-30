@@ -3,7 +3,15 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
-
+import cv2  # For Otsu
+import numpy as np
+# class Binarize(object):
+#     def __call__(self, img):
+#         # img is PIL Image (grayscale)
+#         arr = np.array(img)
+#         _, binary_arr = cv2.threshold(arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+#         return Image.fromarray(binary_arr)
+        
 genuine_extract_path = './content/PNG/Offline Genuine'
 forgery_extract_path = './content/PNG/Offline Forgeries'
 class SignatureVerificationDataset(Dataset):
@@ -105,6 +113,7 @@ class SignatureVerificationDataset(Dataset):
 
 # Example usage
 transform = transforms.Compose([
+    # Binarize(),
     transforms.Resize((64,64)),
     transforms.RandomAffine(
         degrees=5,
