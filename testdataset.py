@@ -55,7 +55,7 @@ class SignatureVerificationTestDataset(Dataset):
         # Load questioned forgery signatures
         for author_id in os.listdir(ques_dir):
             for filename in os.listdir(os.path.join(ques_dir,author_id)):
-                if filename.endswith(('.PNG')):
+                if filename.endswith('.PNG'):
                     try:
                         # Parse filename, e.g., '001_02.png' -> author '001'
                         img_path = os.path.join(ques_dir,author_id, filename)
@@ -73,20 +73,18 @@ class SignatureVerificationTestDataset(Dataset):
             reference_sigs = reference_by_author.get(author_id, [])[:min_ref_imgs]
             ques_genuine_sigs= ques_genuine_by_author.get(author_id,[])
             ques_forged_sigs = ques_forgery_by_author.get(author_id, [])
-            if not (reference_sigs or ques_forgery_by_author or ques_genuine_by_author):
+            if not (reference_sigs or ques_genuine_sigs or ques_forged_sigs):
                 print(f"Warning: No data found for author {author_id}")
 
-            # Reference-Genuine pairs (label = 1)
-            for i in range(len(reference_sigs)):
-                for j in range(len(ques_genuine_sigs)):  # Pair different genuine samples
-                    self.pairs.append((reference_sigs, ques_genuine_sigs[j]))
-                    self.labels.append(1)
+        # Reference-Genuine pairs (label = 1)
+            for j in range(len(ques_genuine_sigs)):  # Pair different genuine samples
+                self.pairs.append((reference_sigs, ques_genuine_sigs[j]))
+                self.labels.append(1)
 
-            # Reference-Forgery pairs (label = 0)
-            for i in range(len(reference_sigs)):
-                for j in range(len(ques_forged_sigs)):  # Pair different genuine samples
-                    self.pairs.append((reference_sigs, ques_forged_sigs[j]))
-                    self.labels.append(0)
+        # Reference-Forgery pairs (label = 0)
+            for j in range(len(ques_forged_sigs)):  # Pair different genuine samples
+                self.pairs.append((reference_sigs, ques_forged_sigs[j]))
+                self.labels.append(0)
 
         print(f"Training Total pairs: {len(self.pairs)}, Total labels: {len(self.labels)}")
         print(f"Training Positive pairs (label=1): {sum(1 for label in self.labels if label == 1)}")

@@ -40,7 +40,7 @@ class SignatureVerificationDataset(Dataset):
 
         # Load forged signatures
         for filename in os.listdir(forgery_dir):
-            if filename.endswith(('.png', '.jpg', '.jpeg')):
+            if filename.endswith(('.png', '.jpg', '.jpeg','.PNG')):
                 try:
                     # Parse filename, e.g., '0119001_01.png' -> author '001'
                     parts = filename.split('_')
@@ -105,7 +105,17 @@ class SignatureVerificationDataset(Dataset):
 
 # Example usage
 transform = transforms.Compose([
-    transforms.Resize((64, 64)),  # Resize to match FashionMNIST if needed
+    transforms.Resize((64,64)),
+    transforms.RandomAffine(
+        degrees=5,
+        translate=(0.05, 0.05),
+        scale=(0.9, 1.1)
+    ),
+    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+    transforms.RandomRotation(degrees=10),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomPerspective(distortion_scale=0.2, p=0.3),
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))  # Standard normalization
+    transforms.Normalize((0.5,), (0.5,)),
+    transforms.RandomErasing(p=0.2, scale=(0.02,0.2), ratio=(0.3,3.3))  # <-- randomly erase patches
 ])
