@@ -116,15 +116,15 @@ transform = transforms.Compose([
     # Binarize(),
     transforms.Resize((64,64)),
     transforms.RandomAffine(
-        degrees=5,
+        degrees=10,
         translate=(0.05, 0.05),
         scale=(0.9, 1.1)
     ),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2),
-    transforms.RandomRotation(degrees=10),
-    transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomPerspective(distortion_scale=0.2, p=0.3),
+    transforms.ColorJitter(brightness=0.3, contrast=0.3),
+    transforms.RandomRotation(degrees=15),
+    # transforms.RandomHorizontalFlip(p=0.5),
+    transforms.RandomPerspective(distortion_scale=0.4, p=0.4),
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,)),
-    transforms.RandomErasing(p=0.2, scale=(0.02,0.2), ratio=(0.3,3.3))  # <-- randomly erase patches
+    transforms.RandomErasing(p=0.4, scale=(0.02,0.2), ratio=(0.3,3.3))  # <-- randomly erase patches
 ])
