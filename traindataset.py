@@ -3,15 +3,9 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
-import cv2  # For Otsu
+import cv2 
 import numpy as np
-# class Binarize(object):
-#     def __call__(self, img):
-#         # img is PIL Image (grayscale)
-#         arr = np.array(img)
-#         _, binary_arr = cv2.threshold(arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-#         return Image.fromarray(binary_arr)
-        
+
 genuine_extract_path = './content/PNG/Offline Genuine'
 forgery_extract_path = './content/PNG/Offline Forgeries'
 class SignatureVerificationDataset(Dataset):
@@ -27,7 +21,8 @@ class SignatureVerificationDataset(Dataset):
         self.transform = transform
         self.pairs = []
         self.labels = []
-
+        self.image_cache = {}
+        
         # Dictionary to store signatures by author
         genuine_by_author = {}
         forgery_by_author = {}
@@ -42,6 +37,7 @@ class SignatureVerificationDataset(Dataset):
                     if author_id not in genuine_by_author:
                         genuine_by_author[author_id] = []
                     genuine_by_author[author_id].append(img_path)
+                    self.image_cache[img_path] = Image.open(img_path)
                 except (ValueError, IndexError):
                     print(f"Skipping invalid genuine filename: {filename}")
                     continue
@@ -57,6 +53,7 @@ class SignatureVerificationDataset(Dataset):
                     if author_id not in forgery_by_author:
                         forgery_by_author[author_id] = []
                     forgery_by_author[author_id].append(img_path)
+                    self.image_cache[img_path] = Image.open(img_path)
                 except (ValueError, IndexError):
                     print(f"Skipping invalid forgery filename: {filename}")
                     continue
@@ -67,7 +64,7 @@ class SignatureVerificationDataset(Dataset):
             print(f"Author {author_id}: {len(sigs)} genuine signatures")
         for author_id, sigs in forgery_by_author.items():
             print(f"Author {author_id}: {len(sigs)} forged signatures")
-
+        print(f"Cached {len(self.image_cache)} unique images in RAM")
         # Create pairs for each author
         for author_id in genuine_by_author:
             genuine_sigs = genuine_by_author.get(author_id, [])
@@ -100,8 +97,8 @@ class SignatureVerificationDataset(Dataset):
         label = self.labels[idx]
 
         # Load images
-        img1 = Image.open(img1_path).convert('L')  # Grayscale, like FashionMNIST
-        img2 = Image.open(img2_path).convert('L')
+        img1 = self.image_cache[img1_path].copy()
+        img2 = self.image_cache[img2_path].copy()
 
         # Apply transforms
         if self.transform:
@@ -113,18 +110,7 @@ class SignatureVerificationDataset(Dataset):
 
 # Example usage
 transform = transforms.Compose([
-    # Binarize(),
-    transforms.Resize((64,64)),
-    transforms.RandomAffine(
-        degrees=10,
-        translate=(0.05, 0.05),
-        scale=(0.9, 1.1)
-    ),
-    transforms.ColorJitter(brightness=0.3, contrast=0.3),
-    transforms.RandomRotation(degrees=15),
-    # transforms.RandomHorizontalFlip(p=0.5),
-    transforms.RandomPerspective(distortion_scale=0.4, p=0.4),
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,)),
-    transforms.RandomErasing(p=0.4, scale=(0.02,0.2), ratio=(0.3,3.3))  # <-- randomly erase patches
+    # transforms.RandomErasing(p=0.4, scale=(0.02,0.2), ratio=(0.3,3.3))  # <-- randomly erase patches
 ])

@@ -28,11 +28,21 @@ def crop_and_save_signature(input_path, output_path):
     x1 = min(arr.shape[1], x1 + pad_x)
 
     cropped = img.crop((x0, y0, x1, y1))
-    # Resize to 64x64 (keeps aspect ratio with white padding if needed)
-    bg = Image.new('L', (size, size), 255)
-    
+    if input_path !== ""
+        augment = T.Compose([
+            T.RandomAffine(degrees=10, translate=(0.05, 0.05), scale=(0.9, 1.1)),
+            T.ColorJitter(brightness=0.3, contrast=0.3),
+            T.RandomRotation(degrees=15),
+            T.RandomPerspective(distortion_scale=0.4, p=0.4),
+            # RandomErasing not useful here (it's tensor-only)
+        ])
+        
+        cropped = augment(cropped)
     # Resize cropped signature to exactly target_size × target_size (preserving aspect ratio)
     cropped = cropped.resize((target_size, target_size), Image.Resampling.LANCZOS)
+        # Resize to 64x64 (keeps aspect ratio with white padding if needed)
+    
+    bg = Image.new('L', (size, size), 255)
     
     # Center it
     x = (size - target_size) // 2
@@ -43,7 +53,7 @@ def crop_and_save_signature(input_path, output_path):
 
 # Run on your dataset
 def pngfy(directories):
-    
+    print(directories)
     for input_dir, output_dir in directories:
         
         if os.path.exists(output_dir):
