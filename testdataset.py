@@ -3,7 +3,7 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as transforms
-
+import numpy as np
 reference_extract_path='./content/PNG/Reference(646)'
 ques_extract_path = './content/PNG/Questioned(1287)'
 class SignatureVerificationTestDataset(Dataset):
@@ -71,10 +71,11 @@ class SignatureVerificationTestDataset(Dataset):
                         continue
     
         min_ref_imgs = min(len(reference_by_author.get(author_id)) for author_id in reference_by_author)
-        print(min_ref_imgs)
+        indices = np.random.permutation(min_ref_imgs)
         # Create pairs for each author
         for author_id in reference_by_author:
-            reference_sigs = reference_by_author.get(author_id, [])[:min_ref_imgs]
+            reference_sigs = reference_by_author.get(author_id, [])
+            reference_sigs = [reference_sigs[i] for i in indices]
             ques_genuine_sigs= ques_genuine_by_author.get(author_id,[])
             ques_forged_sigs = ques_forgery_by_author.get(author_id, [])
             if not (reference_sigs or ques_genuine_sigs or ques_forged_sigs):
