@@ -19,6 +19,7 @@ class SignatureVerificationTestDataset(Dataset):
         self.transform = transform
         self.pairs = []
         self.labels = []
+        self.image_cache = {}
 
         # Dictionary to store signatures by author
         reference_by_author = {}
@@ -35,6 +36,7 @@ class SignatureVerificationTestDataset(Dataset):
                         if author_id not in reference_by_author:
                             reference_by_author[author_id] = []
                         reference_by_author[author_id].append(img_path)
+                        self.image_cache[img_path] = Image.open(img_path).convert('L')
                     except (ValueError, IndexError):
                         print(f"Skipping invalid genuine filename: {filename}")
                         continue
@@ -48,6 +50,7 @@ class SignatureVerificationTestDataset(Dataset):
                         if author_id not in ques_genuine_by_author:
                             ques_genuine_by_author[author_id] = []
                         ques_genuine_by_author[author_id].append(img_path)
+                        self.image_cache[img_path] = Image.open(img_path).convert('L')
                     except (ValueError, IndexError):
                         print(f"Skipping invalid genuine filename: {filename}")
                         continue
@@ -62,6 +65,7 @@ class SignatureVerificationTestDataset(Dataset):
                         if author_id not in ques_forgery_by_author:
                             ques_forgery_by_author[author_id] = []
                         ques_forgery_by_author[author_id].append(img_path)
+                        self.image_cache[img_path] = Image.open(img_path).convert('L')
                     except (ValueError, IndexError):
                         print(f"Skipping invalid genuine filename: {filename}")
                         continue
@@ -109,11 +113,11 @@ class SignatureVerificationTestDataset(Dataset):
         img1 = []
         # Load images
         for img1_path in imgr_path:
-            img = Image.open(img1_path).convert('L')  # Grayscale, like FashionMNIST
+            img = self.image_cache[img1_path].copy()  # Grayscale, like FashionMNIST
             img = self.transform(img)
             img1.append(img)
         
-        img2 = Image.open(img2_path).convert('L')
+        img2 = self.image_cache[img2_path].copy()
         label = torch.tensor(label, dtype=torch.float32)
 
         # Apply transforms

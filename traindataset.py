@@ -37,7 +37,7 @@ class SignatureVerificationDataset(Dataset):
                     if author_id not in genuine_by_author:
                         genuine_by_author[author_id] = []
                     genuine_by_author[author_id].append(img_path)
-                    self.image_cache[img_path] = Image.open(img_path)
+                    self.image_cache[img_path] = Image.open(img_path).convert('L')
                 except (ValueError, IndexError):
                     print(f"Skipping invalid genuine filename: {filename}")
                     continue
@@ -53,7 +53,7 @@ class SignatureVerificationDataset(Dataset):
                     if author_id not in forgery_by_author:
                         forgery_by_author[author_id] = []
                     forgery_by_author[author_id].append(img_path)
-                    self.image_cache[img_path] = Image.open(img_path)
+                    self.image_cache[img_path] = Image.open(img_path).convert('L')
                 except (ValueError, IndexError):
                     print(f"Skipping invalid forgery filename: {filename}")
                     continue
@@ -79,7 +79,9 @@ class SignatureVerificationDataset(Dataset):
                     self.labels.append(1)
 
             # Genuine-Forgery pairs (label = 0)
-            for genuine_sig in genuine_sigs:
+            indices = np.random.permutation(len(genuine_sigs))[:12]
+            selected_genuines = [genuine_sigs[i] for i in indices]
+            for genuine_sig in selected_genuines:
                 for forged_sig in forged_sigs:
                     self.pairs.append((genuine_sig, forged_sig))
                     self.labels.append(0)
@@ -110,7 +112,17 @@ class SignatureVerificationDataset(Dataset):
 
 # Example usage
 transform = transforms.Compose([
+    # transforms.Resize((64, 64)),  # Resize to match FashionMNIST if needed
+    # transforms.ToTensor(),
+    # transforms.Normalize((0.5,), (0.5,)),
+    transforms.Resize((64, 64)),
+    transforms.RandomAffine(degrees=8, translate=(0.04, 0.04), scale=(0.92, 1.08), fill=255),
+    transforms.RandomPerspective(distortion_scale=0.1, p=0.25, fill=255),
+    transforms.RandomApply(
+        [transforms.GaussianBlur(3, sigma=(0.1, 0.5))],
+        p=0.3
+    ),
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,)),
-    # transforms.RandomErasing(p=0.4, scale=(0.02,0.2), ratio=(0.3,3.3))  # <-- randomly erase patches
+    transforms.Normalize((0.5,), (0.5,)),# <-- randomly erase patches
+    # transforms.RandomErasing(p=0.05, scale=(0.02,0.05), ratio=(0.3,3.3))  
 ])
