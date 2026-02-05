@@ -79,7 +79,7 @@ class SignatureVerificationDataset(Dataset):
                     self.labels.append(1)
 
             # Genuine-Forgery pairs (label = 0)
-            indices = np.random.permutation(len(genuine_sigs))
+            indices = np.random.permutation(len(genuine_sigs))[:20]
             selected_genuines = [genuine_sigs[i] for i in indices]
             for genuine_sig in selected_genuines:
                 for forged_sig in forged_sigs:
@@ -115,14 +115,12 @@ transform = transforms.Compose([
     # transforms.Resize((64, 64)),  # Resize to match FashionMNIST if needed
     # transforms.ToTensor(),
     # transforms.Normalize((0.5,), (0.5,)),
-    transforms.Resize((128, 128)),
-    transforms.RandomAffine(degrees=5, translate=(0.05, 0.05), 
-                               scale=(0.95, 1.05), shear=3, fill=255),
-    transforms.RandomPerspective(distortion_scale=0.15, p=0.3, fill=255),
-    transforms.ColorJitter(brightness=0.15, contrast=0.15),
+    transforms.Resize((64, 64)),
+    transforms.RandomAffine(degrees=8, translate=(0.04, 0.04), scale=(0.92, 1.08), fill=255),
+    transforms.RandomPerspective(distortion_scale=0.1, p=0.25, fill=255),
     transforms.RandomApply(
         [transforms.GaussianBlur(3, sigma=(0.1, 0.5))],
-        p=0.2
+        p=0.3
     ),
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,)),# <-- randomly erase patches
