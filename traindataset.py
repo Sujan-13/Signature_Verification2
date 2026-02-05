@@ -79,7 +79,7 @@ class SignatureVerificationDataset(Dataset):
                     self.labels.append(1)
 
             # Genuine-Forgery pairs (label = 0)
-            indices = np.random.permutation(len(genuine_sigs))[:12]
+            indices = np.random.permutation(len(genuine_sigs))[:20]
             selected_genuines = [genuine_sigs[i] for i in indices]
             for genuine_sig in selected_genuines:
                 for forged_sig in forged_sigs:

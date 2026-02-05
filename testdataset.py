@@ -129,6 +129,7 @@ class SignatureVerificationTestDataset(Dataset):
 
 # Example usage
 transform = transforms.Compose([
+    transforms.Grayscale(num_output_channels=1),
     transforms.Resize((64, 64)),  # Resize to match FashionMNIST if needed
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,))  # Standard normalization
