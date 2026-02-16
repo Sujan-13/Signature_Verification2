@@ -112,16 +112,15 @@ class SignatureVerificationDataset(Dataset):
 
 # Example usage
 transform = transforms.Compose([
-    # transforms.Resize((64, 64)),  # Resize to match FashionMNIST if needed
-    # transforms.ToTensor(),
-    # transforms.Normalize((0.5,), (0.5,)),
     transforms.Resize((64, 64)),
+    transforms.Pad(8, fill=255, padding_mode='constant'),
     transforms.RandomAffine(degrees=8, translate=(0.04, 0.04), scale=(0.92, 1.08), fill=255),
     transforms.RandomPerspective(distortion_scale=0.1, p=0.25, fill=255),
     transforms.RandomApply(
         [transforms.GaussianBlur(3, sigma=(0.1, 0.5))],
         p=0.3
     ),
+    transforms.Resize((64, 64)),
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,)),# <-- randomly erase patches
     # transforms.RandomErasing(p=0.05, scale=(0.02,0.05), ratio=(0.3,3.3))  

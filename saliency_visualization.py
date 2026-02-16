@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Saliency Map & Grad-CAM Visualization for Siamese CNN
+UPDATED FOR BLOCK-BASED ARCHITECTURE
 This script helps visualize what features the model is focusing on
 """
 
@@ -23,6 +24,8 @@ class SaliencyVisualizer:
     1. Vanilla Gradient (Saliency Maps)
     2. Grad-CAM (Class Activation Maps)
     3. Feature Map Activations
+    
+    UPDATED to work with block-based architecture (block1, block2, block3, block4)
     """
     
     def __init__(self, model, device):
@@ -42,17 +45,35 @@ class SaliencyVisualizer:
         """Hook to save activations"""
         self.activations = output.detach()
     
+    def _get_model(self):
+        """Get the actual model, handling torch.compile wrapper"""
+        try:
+            return self.model._orig_mod if hasattr(self.model, '_orig_mod') else self.model
+        except:
+            return self.model
+    
     def compute_saliency(self, img1, img2, label):
         """
         Compute vanilla gradient saliency map
         
         Args:
-            img1, img2: Input image tensors (1, 1, 64, 64)
+            img1, img2: Input image tensors (1, 1, 64, 64) or list
             label: Ground truth label (1=genuine, 0=forged)
             
         Returns:
             saliency_img1, saliency_img2: Saliency maps for both images
         """
+        # Handle list input
+        if isinstance(img1, list):
+            img1 = img1[0]
+        if isinstance(img2, list):
+            img2 = img2[0]
+        
+        if img1.dim() == 3:
+            img1 = img1.unsqueeze(0)
+        if img2.dim() == 3:
+            img2 = img2.unsqueeze(0)
+        
         img1 = img1.to(self.device).requires_grad_(True)
         img2 = img2.to(self.device).requires_grad_(True)
         
@@ -73,42 +94,34 @@ class SaliencyVisualizer:
         
         return saliency_img1, saliency_img2, distance.item()
     
-    def compute_gradcam(self, img, target_layer_name=None):
+    def compute_gradcam(self, img, target_block='block4'):
         """
         Compute Grad-CAM for a single image
         
         Args:
-            img: Input tensor (1, 1, 64, 64)
-            target_layer_name: Which layer to visualize (auto-detects last conv if None)
+            img: Input tensor (1, 1, 64, 64) or list
+            target_block: Which block to visualize ('block1', 'block2', 'block3', 'block4')
             
         Returns:
             cam: Class activation map
         """
+        # Handle list input
+        if isinstance(img, list):
+            img = img[0]
+        
+        if img.dim() == 3:
+            img = img.unsqueeze(0)
+        
         img = img.to(self.device)
         
-        # Auto-detect last conv layer if not specified
-        if target_layer_name is None:
-            conv_layers = []
-            for name, module in self.model.named_modules():
-                if isinstance(module, torch.nn.Conv2d):
-                    conv_layers.append((name, module))
-            
-            if not conv_layers:
-                raise ValueError("No Conv2d layers found in model")
-            
-            # Use last conv layer (features.14 or _orig_mod.features.14)
-            target_layer_name, target_layer = conv_layers[-1]
-            print(f"Auto-selected layer: {target_layer_name}")
-        else:
-            # Find the target layer
-            target_layer = None
-            for name, module in self.model.named_modules():
-                if name == target_layer_name:
-                    target_layer = module
-                    break
-            
-            if target_layer is None:
-                raise ValueError(f"Layer {target_layer_name} not found")
+        # Get the actual model
+        model = self._get_model()
+        
+        # Get target block
+        if not hasattr(model, target_block):
+            raise ValueError(f"Model doesn't have {target_block}. Available: block1, block2, block3, block4")
+        
+        target_layer = getattr(model, target_block)
         
         # Register forward and backward hooks
         forward_handle = target_layer.register_forward_hook(self.save_activation)
@@ -146,28 +159,71 @@ class SaliencyVisualizer:
             # Always remove hooks
             forward_handle.remove()
             backward_handle.remove()
+            
+            # Reset stored values
+            self.gradients = None
+            self.activations = None
         
         return cam
     
-    def get_feature_maps(self, img, layer_indices=[2, 5, 8]):
+    def get_feature_maps(self, img, blocks_to_visualize=None):
         """
-        Extract feature maps from intermediate layers
+        Extract feature maps from intermediate blocks
         
         Args:
-            img: Input tensor (1, 1, 64, 64)
-            layer_indices: Which conv layers to visualize
+            img: Input tensor (1, 1, 64, 64) or list
+            blocks_to_visualize: Which blocks to visualize (default: all)
             
         Returns:
-            feature_maps: Dict of {layer_name: activations}
+            feature_maps: Dict of {block_name: activations}
         """
+        if blocks_to_visualize is None:
+            blocks_to_visualize = ['block1', 'block2', 'block3', 'block4']
+        
+        # Handle list input
+        if isinstance(img, list):
+            img = img[0]
+        
+        if img.dim() == 3:
+            img = img.unsqueeze(0)
+        
         img = img.to(self.device)
         feature_maps = {}
         
-        x = img
-        for idx, layer in enumerate(self.model.features):
-            x = layer(x)
-            if idx in layer_indices:
-                feature_maps[f'layer_{idx}'] = x.detach().cpu()
+        # Get the actual model
+        model = self._get_model()
+        
+        with torch.no_grad():
+            x = img
+            
+            # Block 1
+            if 'block1' in blocks_to_visualize:
+                x = model.block1(x)
+                feature_maps['block1'] = x.detach().cpu()
+            else:
+                x = model.block1(x)
+            x = model.pool1(x)
+            
+            # Block 2
+            if 'block2' in blocks_to_visualize:
+                x = model.block2(x)
+                feature_maps['block2'] = x.detach().cpu()
+            else:
+                x = model.block2(x)
+            x = model.pool2(x)
+            
+            # Block 3
+            if 'block3' in blocks_to_visualize:
+                x = model.block3(x)
+                feature_maps['block3'] = x.detach().cpu()
+            else:
+                x = model.block3(x)
+            x = model.pool3(x)
+            
+            # Block 4
+            if 'block4' in blocks_to_visualize:
+                x = model.block4(x)
+                feature_maps['block4'] = x.detach().cpu()
         
         return feature_maps
     
@@ -176,7 +232,7 @@ class SaliencyVisualizer:
         Complete visualization for a signature pair
         
         Args:
-            img1, img2: Image tensors (1, 1, 64, 64) or PIL Images
+            img1, img2: Image tensors (1, 1, 64, 64) or list or PIL Images
             label: Ground truth (1=genuine, 0=forged)
             save_path: Where to save the figure
             pair_idx: Index for filename
@@ -193,21 +249,31 @@ class SaliencyVisualizer:
             img1 = transform(img1).unsqueeze(0)
             img2 = transform(img2).unsqueeze(0)
         
+        # Handle list input
+        if isinstance(img1, list):
+            img1 = img1[0]
+        if isinstance(img2, list):
+            img2 = img2[0]
+        
+        if img1.dim() == 3:
+            img1 = img1.unsqueeze(0)
+        if img2.dim() == 3:
+            img2 = img2.unsqueeze(0)
+        
         # Compute all visualizations
         saliency1, saliency2, distance = self.compute_saliency(img1, img2, label)
         
         try:
-            gradcam1 = self.compute_gradcam(img1)
-            gradcam2 = self.compute_gradcam(img2)
+            gradcam1 = self.compute_gradcam(img1, target_block='block4')
+            gradcam2 = self.compute_gradcam(img2, target_block='block4')
         except Exception as e:
             print(f"Grad-CAM failed: {e}")
             gradcam1 = np.zeros((64, 64))
             gradcam2 = np.zeros((64, 64))
         
         # Get original images for visualization
-        img1_np = img1.squeeze().cpu().numpy()
-        img2_np = img2.squeeze().cpu().numpy()
-        
+        img1_np = img1.squeeze().cpu().detach().numpy()
+        img2_np = img2.squeeze().cpu().detach().numpy()    
         # Denormalize for display
         img1_np = (img1_np * 0.5) + 0.5
         img2_np = (img2_np * 0.5) + 0.5
@@ -309,30 +375,52 @@ class SaliencyVisualizer:
         plt.show()
         plt.close()
     
-    def visualize_feature_maps(self, img, save_path=None, img_idx=0):
+    def visualize_feature_maps(self, img, save_path=None, img_idx=0, max_channels=8):
         """
         Visualize intermediate feature map activations
         
         Args:
-            img: Input tensor (1, 1, 64, 64)
+            img: Input tensor (1, 1, 64, 64) or list
             save_path: Where to save the figure
             img_idx: Index for filename
+            max_channels: Number of channels to show per block
         """
+        # Handle list input
+        if isinstance(img, list):
+            img = img[0]
+        
+        if img.dim() == 3:
+            img = img.unsqueeze(0)
+        
         feature_maps = self.get_feature_maps(img)
         
-        fig, axes = plt.subplots(len(feature_maps), 8, figsize=(20, 3*len(feature_maps)))
-        fig.suptitle('Feature Map Activations (First 8 Channels per Layer)', fontsize=14)
+        n_blocks = len(feature_maps)
+        fig, axes = plt.subplots(n_blocks, max_channels, 
+                                figsize=(max_channels * 2, n_blocks * 2))
         
-        for layer_idx, (layer_name, fmap) in enumerate(feature_maps.items()):
+        if n_blocks == 1:
+            axes = axes.reshape(1, -1)
+        
+        fig.suptitle(f'Feature Map Activations (First {max_channels} Channels per Block)', 
+                    fontsize=14)
+        
+        for block_idx, (block_name, fmap) in enumerate(feature_maps.items()):
             fmap_np = fmap.squeeze().numpy()  # (C, H, W)
+            n_channels = min(max_channels, fmap_np.shape[0])
             
-            for ch_idx in range(min(8, fmap_np.shape[0])):
-                ax = axes[layer_idx, ch_idx] if len(feature_maps) > 1 else axes[ch_idx]
+            for ch_idx in range(n_channels):
+                ax = axes[block_idx, ch_idx]
                 ax.imshow(fmap_np[ch_idx], cmap='viridis')
                 ax.axis('off')
                 
                 if ch_idx == 0:
-                    ax.set_ylabel(layer_name, fontsize=10)
+                    shape_str = f"{fmap_np.shape[1]}×{fmap_np.shape[2]}"
+                    ax.set_ylabel(f'{block_name}\n{fmap_np.shape[0]}ch\n{shape_str}', 
+                                 fontsize=9)
+            
+            # Hide unused channels
+            for ch_idx in range(n_channels, max_channels):
+                axes[block_idx, ch_idx].axis('off')
         
         plt.tight_layout()
         
@@ -430,26 +518,26 @@ def analyze_model_focus(model, dataloader, device, num_samples=10, save_dir='sal
 
 
 # ==============================================================================
-# USAGE EXAMPLE - Add this to your main notebook
-# # ==============================================================================
+# USAGE EXAMPLE
+# ==============================================================================
 
-# if __name__ == "__main__":
-#     """
-#     Example usage - add this code to your main notebook:
+if __name__ == "__main__":
+    """
+    Example usage - add this code to your notebook:
     
-#     # Load your best model
-#     model.load_state_dict(torch.load(best_model_path, map_location=device))
-#     model.eval()
+    # Load your best model
+    model.load_state_dict(torch.load(best_model_path, map_location=device))
+    model.eval()
     
-#     # Run saliency analysis
-#     from saliency_visualization import analyze_model_focus
+    # Run saliency analysis
+    from saliency_visualization import analyze_model_focus
     
-#     analyze_model_focus(
-#         model=model,
-#         dataloader=testdataloader,  # or val_loader
-#         device=device,
-#         num_samples=10,  # Visualize 10 genuine + 10 forged pairs
-#         save_dir='saliency_outputs'
-#     )
-#     """
-#     print("Import this module and use analyze_model_focus() in your notebook")
+    analyze_model_focus(
+        model=model,
+        dataloader=testdataloader,  # or val_loader
+        device=device,
+        num_samples=10,  # Visualize 10 genuine + 10 forged pairs
+        save_dir='saliency_outputs'
+    )
+    """
+    print("Import this module and use analyze_model_focus() in your notebook")
