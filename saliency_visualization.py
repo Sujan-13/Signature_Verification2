@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Saliency Map & Grad-CAM Visualization for Siamese CNN
-UPDATED FOR BLOCK-BASED ARCHITECTURE
-This script helps visualize what features the model is focusing on
+COMPLETE FIXED VERSION with proper Grad-CAM for Siamese networks
 """
 
 import torch
@@ -22,10 +21,8 @@ class SaliencyVisualizer:
     """
     Visualizes what the Siamese CNN is learning using:
     1. Vanilla Gradient (Saliency Maps)
-    2. Grad-CAM (Class Activation Maps)
+    2. Grad-CAM (Class Activation Maps) - FIXED for Siamese networks
     3. Feature Map Activations
-    
-    UPDATED to work with block-based architecture (block1, block2, block3, block4)
     """
     
     def __init__(self, model, device):
@@ -103,48 +100,64 @@ class SaliencyVisualizer:
         
         return saliency_img1, saliency_img2, distance.item()
     
-    def compute_gradcam(self, img, target_block='block4'):
+    def compute_gradcam_siamese(self, img1, img2, target_block='block4'):
         """
-        Compute Grad-CAM for a single image
+        Compute Grad-CAM for Siamese network using distance-based gradients
+        
+        This is FIXED for Siamese networks - uses pairwise distance as signal
+        instead of embedding norm, giving meaningful discriminative gradients.
         
         Args:
-            img: Input tensor (1, 1, 64, 64) or list
+            img1: Primary image to compute CAM for
+            img2: Comparison image (provides discrimination context)
             target_block: Which block to visualize ('block1', 'block2', 'block3', 'block4')
             
         Returns:
-            cam: Class activation map
+            cam: Class activation map showing what img1 features matter for distance
         """
         # Handle list input
-        if isinstance(img, list):
-            img = img[0]
+        if isinstance(img1, list):
+            img1 = img1[0]
+        if isinstance(img2, list):
+            img2 = img2[0]
         
-        if img.dim() == 3:
-            img = img.unsqueeze(0)
+        if img1.dim() == 3:
+            img1 = img1.unsqueeze(0)
+        if img2.dim() == 3:
+            img2 = img2.unsqueeze(0)
         
-        img = img.clone().detach().to(self.device).requires_grad_(True)
+        img1 = img1.clone().detach().to(self.device).requires_grad_(True)
+        img2 = img2.clone().detach().to(self.device)
         
         # Get the actual model
         model = self._get_model()
         
         # Get target block
         if not hasattr(model, target_block):
-            raise ValueError(f"Model doesn't have {target_block}. Available: block1, block2, block3, block4")
+            raise ValueError(f"Model doesn't have {target_block}")
         
         target_layer = getattr(model, target_block)
         
-        # Register forward and backward hooks
+        # Register hooks
         forward_handle = target_layer.register_forward_hook(self.save_activation)
         backward_handle = target_layer.register_full_backward_hook(
             lambda module, grad_in, grad_out: self.save_gradient(grad_out[0])
         )
         
         try:
-            # Forward pass
-            embedding = self.model(img)
+            # Forward pass for BOTH images
+            emb1 = self.model(img1)
+            emb2 = self.model(img2)
             
-            # Backward pass (maximize embedding norm)
+            # Compute distance - this is the task-relevant signal!
+            distance = F.pairwise_distance(emb1, emb2)
+            
+            # Backward through img1's path
             self.model.zero_grad()
-            embedding.norm().backward()
+            if img1.grad is not None:
+                img1.grad.zero_()
+            
+            distance.backward()
             
             # Compute CAM
             if self.gradients is None or self.activations is None:
@@ -153,7 +166,7 @@ class SaliencyVisualizer:
             gradients = self.gradients.cpu().numpy()[0]  # (C, H, W)
             activations = self.activations.cpu().numpy()[0]  # (C, H, W)
             
-            # Weight the channels by their gradients
+            # Weight channels by gradients
             weights = np.mean(gradients, axis=(1, 2))  # (C,)
             cam = np.sum(weights[:, np.newaxis, np.newaxis] * activations, axis=0)
             
@@ -166,11 +179,8 @@ class SaliencyVisualizer:
             cam = cv2.resize(cam, (64, 64))
             
         finally:
-            # Always remove hooks
             forward_handle.remove()
             backward_handle.remove()
-            
-            # Reset stored values
             self.gradients = None
             self.activations = None
         
@@ -280,10 +290,13 @@ class SaliencyVisualizer:
             distance = 0.0
         
         try:
-            gradcam1 = self.compute_gradcam(img1, target_block='block4')
-            gradcam2 = self.compute_gradcam(img2, target_block='block4')
+            # Use FIXED Grad-CAM for Siamese networks
+            gradcam1 = self.compute_gradcam_siamese(img1, img2, target_block='block4')
+            gradcam2 = self.compute_gradcam_siamese(img2, img1, target_block='block4')
         except Exception as e:
             print(f"⚠️ Grad-CAM failed: {e}")
+            import traceback
+            traceback.print_exc()
             gradcam1 = np.zeros((64, 64))
             gradcam2 = np.zeros((64, 64))
         
@@ -477,7 +490,7 @@ def analyze_model_focus(model, dataloader, device, num_samples=10, save_dir='sal
         for img1_array, img2, labels in dataloader:
             # Handle multiple reference images
             if isinstance(img1_array, list):
-                img1 = img1_array[0]  # Use first reference
+                img1 = img1_array[0]
             else:
                 img1 = img1_array
             
@@ -541,27 +554,5 @@ def analyze_model_focus(model, dataloader, device, num_samples=10, save_dir='sal
     """)
 
 
-# ==============================================================================
-# USAGE EXAMPLE
-# ==============================================================================
-
 if __name__ == "__main__":
-    """
-    Example usage - add this code to your notebook:
-    
-    # Load your best model
-    model.load_state_dict(torch.load(best_model_path, map_location=device))
-    model.eval()
-    
-    # Run saliency analysis
-    from saliency_visualization import analyze_model_focus
-    
-    analyze_model_focus(
-        model=model,
-        dataloader=test_dataloader,  # or val_dataloader
-        device=device,
-        num_samples=10,  # Visualize 10 genuine + 10 forged pairs
-        save_dir='saliency_outputs'
-    )
-    """
-    print("Import this module and use analyze_model_focus() in your notebook")
+    print("Import this module and use SaliencyVisualizer or analyze_model_focus() in your notebook")
