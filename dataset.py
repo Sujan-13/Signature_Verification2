@@ -10,7 +10,9 @@ from torch.utils.data import Dataset, DataLoader
 
 genuine_extract_path = './content/train_sig/full_org'
 forgery_extract_path = './content/train_sig/full_forg'
-
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
 # Define the transforms
 train_transform = transforms.Compose([
     transforms.Resize((64, 64)),
@@ -103,6 +105,7 @@ print(f"Cached {len(image_cache)} unique images in RAM")
 
 
 all_authors = list(genuine_by_author.keys())
+random.seed(SEED)   # ← Reset seed before shuffle
 random.shuffle(all_authors)
 
 total_authors = len(all_authors)
