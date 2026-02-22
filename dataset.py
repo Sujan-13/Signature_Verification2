@@ -8,8 +8,8 @@ import numpy as np
 import random  # For seeding if needed
 from torch.utils.data import Dataset, DataLoader
 
-genuine_extract_path = './content/train_sig/full_org'
-forgery_extract_path = './content/train_sig/full_forg'
+genuine_extract_path = './content/testfin/train_sig/full_org'
+forgery_extract_path = './content/testfin/train_sig/full_forg'
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
@@ -148,17 +148,19 @@ def generate_pairs(author_set):
             print(f"Author {author_id} has only 1 genuine → using self-pair")
 
         # Genuine-Forgery pairs (negative)
-        for genuine_sig in genuine_sigs[:12]:
+        for genuine_sig in genuine_sigs[:10]:
             for forged_sig in forged_sigs:
                 pairs.append((genuine_sig, forged_sig))
                 labels.append(0)
-
-        other_authors = random.sample([a for a in genuine_by_author if a != author_id], k=min(3, len(genuine_by_author)-1))
+        skilled=np.sum(labels == 0)
+        print("skilled forgeries:", skilled)
+        other_authors = random.sample([a for a in genuine_by_author if a != author_id], k=min(10, len(genuine_by_author)-1))
         for other_author in other_authors:
             other_genuine_sigs = genuine_by_author[other_author]
             for other_sig in other_genuine_sigs:
                 pairs.append((genuine_sig, other_sig))
                 labels.append(0)
+        print("Random forgeries:", np.sum(labels == 0) - skilled)
 
 
     return pairs, labels

@@ -61,7 +61,7 @@ class SaliencyVisualizer:
             label: Ground truth label (1=genuine, 0=forged)
             
         Returns:
-            saliency_img1, saliency_img2: Saliency maps for both images
+            saliency_img1, saliency_img2, distance: Saliency maps and distance
         """
         # Handle list input
         if isinstance(img1, list):
@@ -74,8 +74,9 @@ class SaliencyVisualizer:
         if img2.dim() == 3:
             img2 = img2.unsqueeze(0)
         
-        img1 = img1.to(self.device).requires_grad_(True)
-        img2 = img2.to(self.device).requires_grad_(True)
+        # Clone and detach first, then move to device and enable gradients
+        img1 = img1.clone().detach().to(self.device).requires_grad_(True)
+        img2 = img2.clone().detach().to(self.device).requires_grad_(True)
         
         # Forward pass
         emb1 = self.model(img1)
@@ -86,9 +87,17 @@ class SaliencyVisualizer:
         
         # Backward pass
         self.model.zero_grad()
+        if img1.grad is not None:
+            img1.grad.zero_()
+        if img2.grad is not None:
+            img2.grad.zero_()
+            
         distance.backward()
         
-        # Get gradients
+        # Get gradients - check if they exist
+        if img1.grad is None or img2.grad is None:
+            raise RuntimeError("Gradients not computed. Model might not support gradient computation.")
+        
         saliency_img1 = img1.grad.abs().squeeze().cpu().numpy()
         saliency_img2 = img2.grad.abs().squeeze().cpu().numpy()
         
@@ -112,7 +121,7 @@ class SaliencyVisualizer:
         if img.dim() == 3:
             img = img.unsqueeze(0)
         
-        img = img.to(self.device)
+        img = img.clone().detach().to(self.device).requires_grad_(True)
         
         # Get the actual model
         model = self._get_model()
@@ -150,7 +159,8 @@ class SaliencyVisualizer:
             
             # ReLU and normalize
             cam = np.maximum(cam, 0)
-            cam = cam / (cam.max() + 1e-8)
+            if cam.max() > 0:
+                cam = cam / cam.max()
             
             # Resize to input size
             cam = cv2.resize(cam, (64, 64))
@@ -261,13 +271,19 @@ class SaliencyVisualizer:
             img2 = img2.unsqueeze(0)
         
         # Compute all visualizations
-        saliency1, saliency2, distance = self.compute_saliency(img1, img2, label)
+        try:
+            saliency1, saliency2, distance = self.compute_saliency(img1, img2, label)
+        except Exception as e:
+            print(f"⚠️ Saliency computation failed: {e}")
+            saliency1 = np.zeros((64, 64))
+            saliency2 = np.zeros((64, 64))
+            distance = 0.0
         
         try:
             gradcam1 = self.compute_gradcam(img1, target_block='block4')
             gradcam2 = self.compute_gradcam(img2, target_block='block4')
         except Exception as e:
-            print(f"Grad-CAM failed: {e}")
+            print(f"⚠️ Grad-CAM failed: {e}")
             gradcam1 = np.zeros((64, 64))
             gradcam2 = np.zeros((64, 64))
         
@@ -277,6 +293,8 @@ class SaliencyVisualizer:
         # Denormalize for display
         img1_np = (img1_np * 0.5) + 0.5
         img2_np = (img2_np * 0.5) + 0.5
+        img1_np = np.clip(img1_np, 0, 1)
+        img2_np = np.clip(img2_np, 0, 1)
         
         # Create figure
         fig = plt.figure(figsize=(16, 10))
@@ -453,6 +471,8 @@ def analyze_model_focus(model, dataloader, device, num_samples=10, save_dir='sal
     genuine_pairs = []
     forged_pairs = []
     
+    print(f"Collecting {num_samples} genuine and {num_samples} forged pairs...")
+    
     with torch.no_grad():
         for img1_array, img2, labels in dataloader:
             # Handle multiple reference images
@@ -463,9 +483,9 @@ def analyze_model_focus(model, dataloader, device, num_samples=10, save_dir='sal
             
             for i in range(len(labels)):
                 if labels[i] == 1 and len(genuine_pairs) < num_samples:
-                    genuine_pairs.append((img1[i:i+1], img2[i:i+1], 1))
+                    genuine_pairs.append((img1[i:i+1].clone(), img2[i:i+1].clone(), 1))
                 elif labels[i] == 0 and len(forged_pairs) < num_samples:
-                    forged_pairs.append((img1[i:i+1], img2[i:i+1], 0))
+                    forged_pairs.append((img1[i:i+1].clone(), img2[i:i+1].clone(), 0))
                 
                 if len(genuine_pairs) >= num_samples and len(forged_pairs) >= num_samples:
                     break
@@ -473,11 +493,14 @@ def analyze_model_focus(model, dataloader, device, num_samples=10, save_dir='sal
             if len(genuine_pairs) >= num_samples and len(forged_pairs) >= num_samples:
                 break
     
+    print(f"✓ Collected {len(genuine_pairs)} genuine and {len(forged_pairs)} forged pairs")
+    
     # Visualize genuine pairs
     print("\n" + "="*60)
     print("Visualizing GENUINE pairs (model should focus on stroke similarities)")
     print("="*60)
     for idx, (img1, img2, label) in enumerate(genuine_pairs):
+        print(f"Processing genuine pair {idx+1}/{len(genuine_pairs)}...")
         visualizer.visualize_pair(img1, img2, label, save_path=save_dir, pair_idx=idx)
     
     # Visualize forged pairs
@@ -485,6 +508,7 @@ def analyze_model_focus(model, dataloader, device, num_samples=10, save_dir='sal
     print("Visualizing FORGED pairs (model should detect differences)")
     print("="*60)
     for idx, (img1, img2, label) in enumerate(forged_pairs):
+        print(f"Processing forged pair {idx+1}/{len(forged_pairs)}...")
         visualizer.visualize_pair(img1, img2, label, save_path=save_dir, pair_idx=idx+num_samples)
     
     print(f"\n✓ All visualizations saved to: {save_dir}")
@@ -534,7 +558,7 @@ if __name__ == "__main__":
     
     analyze_model_focus(
         model=model,
-        dataloader=testdataloader,  # or val_loader
+        dataloader=test_dataloader,  # or val_dataloader
         device=device,
         num_samples=10,  # Visualize 10 genuine + 10 forged pairs
         save_dir='saliency_outputs'
