@@ -124,9 +124,12 @@ print(f"Val   authors: {len(val_authors)}")   # ← add this
 print(f"Test  authors: {len(test_authors)}")
 print(f"Train + Val + Test = {len(train_authors) + len(val_authors) + len(test_authors)} (should equal total)")
 
-def generate_balanced_pairs(author_set):
+def generate_perfectly_balanced_pairs(author_set):
     """
-    Generate balanced training pairs with equal genuine and forged samples
+    Generate PERFECTLY balanced pairs with:
+    - 50% genuine, 50% forged (EXACT per author, then combined)
+    - Skilled forgeries: ONLY same author
+    - Random forgeries: ONLY different authors
     """
     pairs = []
     labels = []
@@ -134,227 +137,206 @@ def generate_balanced_pairs(author_set):
     stats = {
         'genuine_pairs': 0,
         'skilled_forgeries': 0,
-        'random_forgeries': 0
+        'random_forgeries': 0,
+        'authors_with_no_skilled': 0
     }
+    
+    all_available_authors = list(genuine_by_author.keys())
     
     for author_id in author_set:
         genuine_sigs = genuine_by_author.get(author_id, [])
         forged_sigs = forgery_by_author.get(author_id, [])
         num_genuine = len(genuine_sigs)
         
-        # ─── GENUINE-GENUINE PAIRS (POSITIVE) ───────────────────────
+        if num_genuine == 0:
+            continue
+        
+        # ─── STEP 1: Generate ALL genuine pairs for this author ─────
         genuine_pairs_for_author = []
         
         if num_genuine >= 2:
-            # Generate all combinations
             for i in range(num_genuine):
                 for j in range(i + 1, num_genuine):
                     genuine_pairs_for_author.append((genuine_sigs[i], genuine_sigs[j]))
         elif num_genuine == 1:
-            # Self-pair as fallback
             genuine_pairs_for_author.append((genuine_sigs[0], genuine_sigs[0]))
-            print(f"⚠️ Author {author_id} has only 1 genuine → using self-pair")
         
         num_genuine_pairs = len(genuine_pairs_for_author)
+        
+        # ─── STEP 2: Generate skilled forgery pool (SAME AUTHOR ONLY) ───
+        skilled_forgery_pool = []
+        
+        if len(forged_sigs) > 0:
+            for genuine_sig in genuine_sigs:
+                for forged_sig in forged_sigs:
+                    skilled_forgery_pool.append((genuine_sig, forged_sig))
+        
+        # ─── STEP 3: Generate random forgery pool (OTHER AUTHORS ONLY) ──
+        random_forgery_pool = []
+        other_authors = [a for a in all_available_authors if a != author_id]
+        
+        if len(other_authors) > 0:
+            num_authors_to_sample = min(
+                len(other_authors),
+                max(15, num_genuine * 3)  # Sample MORE authors
+            )
+            
+            sampled_other_authors = random.sample(other_authors, num_authors_to_sample)
+            
+            for genuine_sig in genuine_sigs:
+                for other_author in sampled_other_authors:
+                    other_sigs = genuine_by_author[other_author]
+                    num_sigs_per_author = min(3, len(other_sigs))
+                    sampled_other_sigs = random.sample(other_sigs, num_sigs_per_author)
+                    
+                    for other_sig in sampled_other_sigs:
+                        random_forgery_pool.append((genuine_sig, other_sig))
+        
+        # ─── STEP 4: Balance forgeries for THIS AUTHOR ──────────────
+        target_total_forgeries = num_genuine_pairs
+        
+        # Determine skilled/random split
+        if len(skilled_forgery_pool) > 0:
+            # Has skilled forgeries - aim for 50/50 split
+            target_skilled = target_total_forgeries // 2
+            target_random = target_total_forgeries - target_skilled
+        else:
+            # No skilled forgeries - use ALL random
+            target_skilled = 0
+            target_random = target_total_forgeries
+            stats['authors_with_no_skilled'] += 1
+        
+        # Sample SKILLED forgeries (WITH replacement if needed, but ONLY from this author)
+        sampled_skilled = []
+        if target_skilled > 0 and len(skilled_forgery_pool) > 0:
+            if len(skilled_forgery_pool) >= target_skilled:
+                # Enough skilled - sample without replacement
+                sampled_skilled = random.sample(skilled_forgery_pool, target_skilled)
+            else:
+                # NOT enough skilled - oversample THIS AUTHOR'S skilled forgeries
+                sampled_skilled = random.choices(skilled_forgery_pool, k=target_skilled)
+                # ↑ This samples WITH replacement from SAME AUTHOR ONLY ✓
+        
+        # Sample RANDOM forgeries (WITH replacement if needed, but ONLY from other authors)
+        sampled_random = []
+        if target_random > 0:
+            if len(random_forgery_pool) >= target_random:
+                # Enough random - sample without replacement
+                sampled_random = random.sample(random_forgery_pool, target_random)
+            elif len(random_forgery_pool) > 0:
+                # NOT enough random - oversample from other authors
+                sampled_random = random.choices(random_forgery_pool, k=target_random)
+                # ↑ This samples WITH replacement from OTHER AUTHORS ONLY ✓
+            else:
+                # No random forgeries available - fill with skilled
+                if len(skilled_forgery_pool) > 0:
+                    extra_skilled = random.choices(skilled_forgery_pool, k=target_random)
+                    sampled_skilled.extend(extra_skilled)
+        
+        # Combine
+        final_forgeries = sampled_skilled + sampled_random
+        
+        # Verify balance for this author
+        if len(final_forgeries) != num_genuine_pairs:
+            shortage = num_genuine_pairs - len(final_forgeries)
+            # Fill shortage with whatever is available
+            if len(skilled_forgery_pool) > 0:
+                extra = random.choices(skilled_forgery_pool, k=shortage)
+            elif len(random_forgery_pool) > 0:
+                extra = random.choices(random_forgery_pool, k=shortage)
+            else:
+                print(f"⚠️ Author {author_id}: Cannot generate enough forgeries!")
+                continue
+            final_forgeries.extend(extra)
+        
+        # Add to dataset
         pairs.extend(genuine_pairs_for_author)
         labels.extend([1] * num_genuine_pairs)
-        stats['genuine_pairs'] += num_genuine_pairs
-        
-        # ─── SKILLED FORGERIES (NEGATIVE) ────────────────────────────
-        # Limit genuine signatures to avoid explosion
-        max_genuine_for_forgery = min(len(genuine_sigs), 10)
-        
-        skilled_forgery_pairs = []
-        for genuine_sig in genuine_sigs[:max_genuine_for_forgery]:
-            for forged_sig in forged_sigs:
-                skilled_forgery_pairs.append((genuine_sig, forged_sig))
-        
-        # ─── RANDOM FORGERIES (NEGATIVE) ──────────────────────────────
-        # Sample other authors for random forgeries
-        other_authors = [a for a in genuine_by_author.keys() if a != author_id]
-        
-        random_forgery_pairs = []
-        if len(other_authors) > 0:
-            # Sample up to 5 other authors
-            num_other_authors = min(5, len(other_authors))
-            sampled_authors = random.sample(other_authors, k=num_other_authors)
-            
-            for genuine_sig in genuine_sigs[:max_genuine_for_forgery]:
-                for other_author in sampled_authors:
-                    other_sigs = genuine_by_author[other_author]
-                    # Sample up to 2 signatures from each other author
-                    for other_sig in random.sample(other_sigs, min(2, len(other_sigs))):
-                        random_forgery_pairs.append((genuine_sig, other_sig))
-        
-        # ─── BALANCE FORGERIES TO MATCH GENUINE PAIRS ─────────────────
-        # We want: num_forgeries ≈ num_genuine_pairs
-        total_forgery_pairs = skilled_forgery_pairs + random_forgery_pairs
-        
-        # If too many forgeries, sample down to match genuine pairs
-        target_forgeries = num_genuine_pairs
-        
-        if len(total_forgery_pairs) > target_forgeries:
-            # Ensure we keep some of both types
-            min_skilled = min(len(skilled_forgery_pairs), target_forgeries // 2)
-            min_random = target_forgeries - min_skilled
-            
-            sampled_skilled = random.sample(skilled_forgery_pairs, 
-                                          min(min_skilled, len(skilled_forgery_pairs)))
-            sampled_random = random.sample(random_forgery_pairs, 
-                                         min(min_random, len(random_forgery_pairs)))
-            
-            final_forgeries = sampled_skilled + sampled_random
-        else:
-            final_forgeries = total_forgery_pairs
-        
-        # Add forgeries to dataset
         pairs.extend(final_forgeries)
         labels.extend([0] * len(final_forgeries))
         
-        # Update statistics
-        num_skilled = sum(1 for p in final_forgeries if p in skilled_forgery_pairs)
-        num_random = len(final_forgeries) - num_skilled
-        
-        stats['skilled_forgeries'] += num_skilled
-        stats['random_forgeries'] += num_random
-        
-        # Print per-author stats
-        if author_id == list(author_set)[0]:  # Print for first author as example
-            print(f"\nExample (Author {author_id}):")
-            print(f"  Genuine pairs: {num_genuine_pairs}")
-            print(f"  Skilled forgeries: {num_skilled}")
-            print(f"  Random forgeries: {num_random}")
-            print(f"  Total forgeries: {len(final_forgeries)}")
-            print(f"  Balance ratio: {len(final_forgeries)/num_genuine_pairs:.2f}")
+        # Update stats
+        stats['genuine_pairs'] += num_genuine_pairs
+        stats['skilled_forgeries'] += len([p for p in final_forgeries if p in skilled_forgery_pool])
+        stats['random_forgeries'] += len([p for p in final_forgeries if p in random_forgery_pool])
     
-    # Print overall statistics
+    # Print statistics
+    total_forgeries = stats['skilled_forgeries'] + stats['random_forgeries']
+    
     print("\n" + "="*60)
     print("DATASET STATISTICS")
     print("="*60)
     print(f"Total genuine pairs: {stats['genuine_pairs']}")
     print(f"Total skilled forgeries: {stats['skilled_forgeries']}")
     print(f"Total random forgeries: {stats['random_forgeries']}")
-    total_forgeries = stats['skilled_forgeries'] + stats['random_forgeries']
     print(f"Total forgeries: {total_forgeries}")
-    print(f"\nBalance ratio (forgeries/genuine): {total_forgeries/stats['genuine_pairs']:.2f}")
-    print(f"Positive samples: {stats['genuine_pairs']} ({stats['genuine_pairs']/(stats['genuine_pairs']+total_forgeries)*100:.1f}%)")
-    print(f"Negative samples: {total_forgeries} ({total_forgeries/(stats['genuine_pairs']+total_forgeries)*100:.1f}%)")
+    print(f"Authors with no skilled forgeries: {stats['authors_with_no_skilled']}")
+    print(f"\nBalance ratio: {total_forgeries/stats['genuine_pairs']:.4f}")
+    
+    if total_forgeries > 0:
+        genuine_pct = stats['genuine_pairs'] / (stats['genuine_pairs'] + total_forgeries) * 100
+        forged_pct = total_forgeries / (stats['genuine_pairs'] + total_forgeries) * 100
+        skilled_pct = stats['skilled_forgeries'] / total_forgeries * 100
+        random_pct = stats['random_forgeries'] / total_forgeries * 100
+        
+        print(f"Positive (genuine): {stats['genuine_pairs']} ({genuine_pct:.1f}%)")
+        print(f"Negative (forged):  {total_forgeries} ({forged_pct:.1f}%)")
+        print(f"  ├─ Skilled (same author): {stats['skilled_forgeries']} ({skilled_pct:.1f}%)")
+        print(f"  └─ Random (other authors): {stats['random_forgeries']} ({random_pct:.1f}%)")
+    
     print("="*60)
     
     return pairs, labels
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# USAGE - Replace your existing generate_pairs function with this
+# GENERATE DATASETS
 # ═══════════════════════════════════════════════════════════════════════
 
-# Generate balanced datasets
 print("\n🔄 Generating TRAINING pairs...")
-train_pairs, train_labels = generate_balanced_pairs(train_authors)
+train_pairs, train_labels = generate_perfectly_balanced_pairs(train_authors)
 
 print("\n🔄 Generating VALIDATION pairs...")
-val_pairs, val_labels = generate_balanced_pairs(val_authors)
+val_pairs, val_labels = generate_perfectly_balanced_pairs(val_authors)
 
 print("\n🔄 Generating TEST pairs...")
-test_pairs, test_labels = generate_balanced_pairs(test_authors)
+test_pairs, test_labels = generate_perfectly_balanced_pairs(test_authors)
 
-# Verify balance
+# Verification
 print("\n" + "="*60)
 print("FINAL DATASET SUMMARY")
 print("="*60)
-print(f"\nTRAIN: {len(train_labels)} total pairs")
-print(f"  Positive: {sum(train_labels)} ({sum(train_labels)/len(train_labels)*100:.1f}%)")
-print(f"  Negative: {len(train_labels)-sum(train_labels)} ({(len(train_labels)-sum(train_labels))/len(train_labels)*100:.1f}%)")
 
-print(f"\nVAL: {len(val_labels)} total pairs")
-print(f"  Positive: {sum(val_labels)} ({sum(val_labels)/len(val_labels)*100:.1f}%)")
-print(f"  Negative: {len(val_labels)-sum(val_labels)} ({(len(val_labels)-sum(val_labels))/len(val_labels)*100:.1f}%)")
+for split_name, split_labels in [("TRAIN", train_labels), 
+                                   ("VAL", val_labels), 
+                                   ("TEST", test_labels)]:
+    if len(split_labels) == 0:
+        print(f"\n{split_name}: ⚠️ EMPTY!")
+        continue
+        
+    total = len(split_labels)
+    positive = sum(split_labels)
+    negative = total - positive
+    
+    print(f"\n{split_name}: {total:,} total pairs")
+    print(f"  Positive: {positive:,} ({positive/total*100:.1f}%)")
+    print(f"  Negative: {negative:,} ({negative/total*100:.1f}%)")
 
-print(f"\nTEST: {len(test_labels)} total pairs")
-print(f"  Positive: {sum(test_labels)} ({sum(test_labels)/len(test_labels)*100:.1f}%)")
-print(f"  Negative: {len(test_labels)-sum(test_labels)} ({(len(test_labels)-sum(test_labels))/len(test_labels)*100:.1f}%)")
+print("="*60)
 
-
-
-test_pairs, test_labels = generate_balanced_pairs(test_authors)
-train_pairs, train_labels = generate_balanced_pairs(train_authors)
-val_pairs, val_labels = generate_balanced_pairs(val_authors)
-
-print(f"Train pairs: {len(train_pairs)}, Train labels: {len(train_labels)}")
-print(f"Train positive: {sum(1 for label in train_labels if label ==1)}")
-print(f"Train negative: {sum(1 for label in train_labels if label == 0)}")
-print(f"Val pairs: {len(val_pairs)}, Val labels: {len(val_labels)}")
-print(f"Val positive: {sum(1 for label in val_labels if label == 1)}")
-print(f"Val negative: {sum(1 for label in val_labels if label == 0)}")
-print(f"Test pairs: {len(test_pairs)}, Test labels: {len(test_labels)}")
-print(f"Test positive: {sum(1 for label in test_labels if label == 1)}")
-print(f"Test negative: {sum(1 for label in test_labels if label == 0)}")
-print(f"Train positive ratio: {sum(l==1 for l in train_labels) / len(train_labels):.3f}")
+# Rest of dataloader code...
 train_dataset = PairDataset(train_pairs, train_labels, image_cache, transform=train_transform)
 val_dataset = PairDataset(val_pairs, val_labels, image_cache, transform=test_transform)
 test_dataset = PairDataset(test_pairs, test_labels, image_cache, transform=test_transform)
 
-# Create dataloaders
-train_dataloader = DataLoader(
-    train_dataset, 
-    batch_size=64,           
-    shuffle=True,
-    num_workers=8,            
-    pin_memory=True,          
-    prefetch_factor=2,
-    persistent_workers=True
-)
+train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, 
+                               num_workers=8, pin_memory=True, prefetch_factor=2, persistent_workers=True)
+val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=False,
+                            num_workers=6, pin_memory=True, prefetch_factor=2, persistent_workers=True)
+test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=False,
+                             num_workers=6, pin_memory=True, prefetch_factor=2, persistent_workers=True)
 
-test_dataloader = DataLoader(
-    test_dataset,
-    batch_size=128,           
-    shuffle=False,
-    num_workers=6,            
-    pin_memory=True,          
-    prefetch_factor=2,
-    persistent_workers=True
-)
-
-val_dataloader = DataLoader(
-    val_dataset,
-    batch_size=128,
-    shuffle=False,
-    num_workers=6,
-    pin_memory=True,
-    prefetch_factor=2,
-    persistent_workers=True
-)
-
-import matplotlib.pyplot as plt
-import torchvision.transforms.functional as F
-from torchvision.transforms import ToPILImage
-
-# Helper to reverse normalization so we can visualize properly
-def denormalize(tensor):
-    # Assuming Normalize((0.5,), (0.5,))
-    tensor = tensor.clone()  # don't modify original
-    tensor = tensor * 0.5 + 0.5  # reverse Normalize
-    tensor = tensor.clamp(0, 1)
-    return tensor
-
-# Show a grid of 8 random augmented samples
-num_samples = 8
-fig, axes = plt.subplots(2, 4, figsize=(12, 6))
-axes = axes.flatten()
-
-for i in range(num_samples):
-    # Get a random sample from train_dataset
-    img1, img2, label = train_dataset[random.randint(0, len(train_dataset)-1)]
-    
-    # We usually want to look at img1 (or img2 — doesn't matter)
-    img = denormalize(img1)           # reverse normalization
-    img_pil = ToPILImage()(img)       # convert tensor → PIL Image
-    
-    # Show image
-    axes[i].imshow(img_pil, cmap='gray')
-    axes[i].set_title(f"Label: {label.item()}\nAugmented sample")
-    axes[i].axis('off')
-
-plt.tight_layout()
-plt.suptitle("Random samples after train_transform (should look reasonable)", fontsize=14)
-plt.show()
+print(f"\n✓ Dataloaders created")
+print(f"  Train: {len(train_dataloader)} batches")
+print(f"  Val:   {len(val_dataloader)} batches")
+print(f"  Test:  {len(test_dataloader)} batches")
