@@ -14,11 +14,27 @@ SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 # Define the transforms
+# train_transform = transforms.Compose([
+#     transforms.Resize((64, 64)),
+#     transforms.Pad(8, fill=255, padding_mode='constant'),
+#     transforms.RandomAffine(degrees=8, translate=(0.04, 0.04), scale=(0.92, 1.08), fill=255),
+#     transforms.RandomPerspective(distortion_scale=0.1, p=0.25, fill=255),
+#     transforms.RandomApply(
+#         [transforms.GaussianBlur(3, sigma=(0.1, 0.5))],
+#         p=0.3
+#     ),
+#     transforms.Resize((64, 64)),
+#     transforms.RandomInvert(p=1.0),
+#     transforms.ToTensor(),
+#     transforms.Normalize((0.5,), (0.5,)),
+#     # transforms.RandomErasing(p=0.05, scale=(0.02,0.05), ratio=(0.3,3.3))  
+# ])
 train_transform = transforms.Compose([
     transforms.Resize((64, 64)),
+    transforms.Grayscale(num_output_channels=1),
     transforms.Pad(8, fill=255, padding_mode='constant'),
-    transforms.RandomAffine(degrees=8, translate=(0.04, 0.04), scale=(0.92, 1.08), fill=255),
-    transforms.RandomPerspective(distortion_scale=0.1, p=0.25, fill=255),
+    transforms.RandomAffine(degrees=15, translate=(0.08, 0.08), scale=(0.98, 1.1), fill=255),
+    transforms.RandomPerspective(distortion_scale=0.2, p=0.25, fill=255),
     transforms.RandomApply(
         [transforms.GaussianBlur(3, sigma=(0.1, 0.5))],
         p=0.3
@@ -32,6 +48,7 @@ train_transform = transforms.Compose([
 
 test_transform = transforms.Compose([
     transforms.Resize((64, 64)),  # Resize to match FashionMNIST if needed
+    transforms.Grayscale(num_output_channels=1),
     transforms.RandomInvert(p=1.0),
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,))  # Standard normalization
