@@ -1,0 +1,13 @@
+[
+  {
+    "config_id": 1,
+    "params": {
+      "margin": 1.0,
+      "center_loss_weight": 0.01,
+      "lr": 0.0005,
+      "focal_gamma": 1.5
+    },
+    "best_val_acc": 0.8715210355987055,
+    "final_epoch": 16
+  }
+]
