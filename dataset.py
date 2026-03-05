@@ -1,3 +1,4 @@
+#dataset.py
 import os
 from PIL import Image
 import torch
@@ -158,7 +159,7 @@ def generate_perfectly_balanced_pairs(author_set):
         'authors_with_no_skilled': 0
     }
     
-    all_available_authors = list(genuine_by_author.keys())
+    all_available_authors = list(author_set)
     
     for author_id in author_set:
         genuine_sigs = genuine_by_author.get(author_id, [])
@@ -345,7 +346,9 @@ print("="*60)
 train_dataset = PairDataset(train_pairs, train_labels, image_cache, transform=train_transform)
 val_dataset = PairDataset(val_pairs, val_labels, image_cache, transform=test_transform)
 test_dataset = PairDataset(test_pairs, test_labels, image_cache, transform=test_transform)
-
+train_labels = train_dataset.labels
+val_labels   = val_dataset.labels
+test_labels  = test_dataset.labels
 train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, 
                                num_workers=8, pin_memory=True, prefetch_factor=2, persistent_workers=True)
 val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=False,
