@@ -342,21 +342,19 @@ for split_name, split_labels in [("TRAIN", train_labels),
 
 print("="*60)
 
-# Rest of dataloader code...
-train_dataset = PairDataset(train_pairs, train_labels, image_cache, transform=train_transform)
-val_dataset = PairDataset(val_pairs, val_labels, image_cache, transform=test_transform)
-test_dataset = PairDataset(test_pairs, test_labels, image_cache, transform=test_transform)
-train_labels = train_dataset.labels
-val_labels   = val_dataset.labels
-test_labels  = test_dataset.labels
-train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, 
-                               num_workers=8, pin_memory=True, prefetch_factor=2, persistent_workers=True)
-val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=False,
-                            num_workers=6, pin_memory=True, prefetch_factor=2, persistent_workers=True)
-test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=False,
-                             num_workers=6, pin_memory=True, prefetch_factor=2, persistent_workers=True)
+if __name__ == "__main__":
+    train_dataset = PairDataset(train_pairs, train_labels, image_cache, transform=train_transform)
+    val_dataset = PairDataset(val_pairs, val_labels, image_cache, transform=test_transform)
+    test_dataset = PairDataset(test_pairs, test_labels, image_cache, transform=test_transform)
+    
+    train_dataloader = DataLoader(train_dataset, batch_size=64, shuffle=True, 
+                                  num_workers=8, pin_memory=True, prefetch_factor=2, persistent_workers=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=128, shuffle=False,
+                                num_workers=6, pin_memory=True, prefetch_factor=2, persistent_workers=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=128, shuffle=False,
+                                 num_workers=6, pin_memory=True, prefetch_factor=2, persistent_workers=True)
 
-print(f"\n✓ Dataloaders created")
-print(f"  Train: {len(train_dataloader)} batches")
-print(f"  Val:   {len(val_dataloader)} batches")
-print(f"  Test:  {len(test_dataloader)} batches")
+    print(f"\n✓ Dataloaders created")
+    print(f"  Train: {len(train_dataloader)} batches")
+    print(f"  Val:   {len(val_dataloader)} batches")
+    print(f"  Test:  {len(test_dataloader)} batches")
