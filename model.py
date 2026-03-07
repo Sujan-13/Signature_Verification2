@@ -81,7 +81,7 @@ class SiameseCNN(nn.Module):
         self.embedding = nn.Sequential(
             nn.Linear(256, 256),
             nn.PReLU(),
-            nn.Dropout(0.4),   # increased: was 0.3
+            nn.Dropout(0.5),   # increased: was 0.3→0.4→0.5 (train/val gap still 3.4x)
             nn.Linear(256, 256),
         )
 
